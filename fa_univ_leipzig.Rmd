@@ -1,0 +1,60 @@
+---
+title: "Factor Analysis of World Universities"
+author: "Jeremy Leipzig"
+date: "April 11, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(psy)
+library(GGally)
+```
+## Data
+I am using data about world university rankings provided by Kaggle:
+
+[https://www.kaggle.com/mylesoneill/world-university-rankings](https://www.kaggle.com/mylesoneill/world-university-rankings)
+
+
+```{r loadit}
+read.csv("world-university-ranking/cwurData.csv",header=TRUE,stringsAsFactors = FALSE) %>% dplyr::filter(year==2015 | year==2014) %>% select(-country) -> cwur
+read.csv("world-university-ranking/timesData.csv",header=TRUE,stringsAsFactors = FALSE) %>% dplyr::filter(year==2015 | year==2014) %>% select(-world_rank)  -> times
+merge(x=times,y=cwur,by.x = c("university_name","year"),by.y=c("institution","year"),suffixes = c(".times",".cwur"),all=FALSE) %>% arrange(university_name,-year) %>% distinct(university_name) -> univ
+univ$international<-as.numeric(univ$international)
+univ$income<-as.numeric(univ$income)
+univ$female_male_ratio<-as.numeric(str_extract(univ$female_male_ratio,'\\d+'))
+univ$num_students<-as.numeric(gsub(",", "", as.character(univ$num_students)))
+univ$international_students<-as.numeric(gsub("%", "", as.character(univ$international_students)))
+nums <- sapply(univ, is.numeric)
+```
+
+## Scatterplot and correlations
+```{r corr}
+ggpairs(univ[,nums])
+```
+
+#keep m-f ratio
+#univ[,nums] %>% select(-year) %>% na.omit-> univ_num
+
+#drop m-f ratio
+univ[,nums] %>% select(-year,-female_male_ratio) %>% na.omit-> univ_num
+```
+## PCA
+Let's first run a PCA to get a rough idea of the dimensionality of the data.
+```{r pca}
+princomp(univ_num)
+```
+## Number of Factors to Retain
+
+###Scree plot
+```{r fa}
+fa<-factanal(univ_num)
+
+```
+
+## Rotate
+```{r farotate}
+fact1<- factanal(x,factors,scores=c(“regression”),rotation=”varimax”)
