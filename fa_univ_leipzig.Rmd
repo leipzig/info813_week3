@@ -12,49 +12,150 @@ library(ggthemes)
 library(dplyr)
 library(psy)
 library(GGally)
+library(stringr)
+library(gplots)
 ```
 ## Data
 I am using data about world university rankings provided by Kaggle:
 
 [https://www.kaggle.com/mylesoneill/world-university-rankings](https://www.kaggle.com/mylesoneill/world-university-rankings)
 
+I used two tables in this dataset
+* Times Higher Education World University Ranking 
+* Center for World University Rankings
+
+### Times Fields:
+* world_rank - world rank for the university. Contains rank ranges and equal ranks (eg. =94 and 201-250).
+* university_name - name of university.
+* country - country of each university.
+* teaching - university score for teaching (the learning environment).
+* international - university score international outlook (staff, students, research).
+* research - university score for research (volume, income and reputation).
+* citations - university score for citations (research influence).
+* income - university score for industry income (knowledge transfer).
+* total_score - total score for university, used to determine rank.
+* num_students - number of students at the university.
+* student_staff_ratio - Number of students divided by number of staff.
+* international_students - Percentage of students who are international.
+* female_male_ratio - Female student to Male student ratio.
+* year - year of the ranking (2011 to 2016 included).
+
+### CWUR Fields:
+* world_rank - world rank for university.
+* university_name - name of university.
+* country - country of each university.
+* national_rank - rank of university within its country.
+* quality_of_education - rank for quality of education.
+* alumni_employment - rank for alumni employment.
+* quality_of_faculty - rank for quality of faculty.
+* publications - rank for publications.
+* influence - rank for influence.
+* citations - rank for citations.
+* broad_impact - rank for broad impact (only available for 2014 and 2015)
+* patents - rank for patents.
+* score - total score, used for determining world rank.
+* year - year of ranking (2012 to 2015).
 
 ```{r loadit}
 read.csv("world-university-ranking/cwurData.csv",header=TRUE,stringsAsFactors = FALSE) %>% dplyr::filter(year==2015 | year==2014) %>% select(-country) -> cwur
 read.csv("world-university-ranking/timesData.csv",header=TRUE,stringsAsFactors = FALSE) %>% dplyr::filter(year==2015 | year==2014) %>% select(-world_rank)  -> times
-merge(x=times,y=cwur,by.x = c("university_name","year"),by.y=c("institution","year"),suffixes = c(".times",".cwur"),all=FALSE) %>% arrange(university_name,-year) %>% distinct(university_name) -> univ
-univ$international<-as.numeric(univ$international)
-univ$income<-as.numeric(univ$income)
-univ$female_male_ratio<-as.numeric(str_extract(univ$female_male_ratio,'\\d+'))
-univ$num_students<-as.numeric(gsub(",", "", as.character(univ$num_students)))
-univ$international_students<-as.numeric(gsub("%", "", as.character(univ$international_students)))
+names(cwur)<-paste("cw",names(cwur),sep="_")
+names(times)<-paste("ti",names(times),sep="_")
+merge(x=times,y=cwur,by.x = c("ti_university_name","ti_year"),by.y=c("cw_institution","cw_year"),suffixes = c(".times",".cwur"),all=FALSE) %>% arrange(ti_university_name,-ti_year) %>% distinct(ti_university_name) -> univ
+knitr::kable(t(head(univ)))
+```
+
+```{r munge}
+univ$ti_international<-as.numeric(univ$ti_international)
+univ$ti_income<-as.numeric(univ$ti_income)
+univ$ti_female_male_ratio<-as.numeric(str_extract(univ$ti_female_male_ratio,'\\d+'))
+univ$ti_num_students<-as.numeric(gsub(",", "", as.character(univ$ti_num_students)))
+univ$ti_international_students<-as.numeric(gsub("%", "", as.character(univ$ti_international_students)))
 nums <- sapply(univ, is.numeric)
+nums[1] <- TRUE
+nums[3] <- TRUE
+univ[,nums] %>% select(-ti_year,-ti_female_male_ratio) %>% na.omit -> univ_na
+nums[1] <- FALSE
+nums[3] <- FALSE
+univ[,nums] %>% select(-ti_year,-ti_female_male_ratio) %>% na.omit -> univ_df
+row.names(univ_df) <- univ_na$ti_university_name
+
+# if you want to convert ti scores to ordinals, you can do it here
+# but it actually decreases the loading of those variables
+univ_ranked<-cbind(univ_df[,c(9:19)],lapply(univ_df[,c(1:8)],function(x){order(x,decreasing=TRUE)}))
+
+univ_df %>% as.matrix -> univ_num
 ```
 
-## Scatterplot and correlations
-```{r corr}
-ggpairs(univ[,nums])
+## Heatmap and dendrogram
+```{r dendro, fig.width=10, fig.height=40}
+heatmap.2(as.matrix(scale(univ_num)),margins = c(10, 10),trace="none",cexRow=0.68, cexCol=0.9)
 ```
 
-#keep m-f ratio
-#univ[,nums] %>% select(-year) %>% na.omit-> univ_num
-
-#drop m-f ratio
-univ[,nums] %>% select(-year,-female_male_ratio) %>% na.omit-> univ_num
-```
 ## PCA
-Let's first run a PCA to get a rough idea of the dimensionality of the data.
+Let's first run a PCA to get a rough idea of the dimensionality of the data. A PCA should help to identify factors prior to factor analysis.
 ```{r pca}
-princomp(univ_num)
+pca.univ<-princomp(univ_num, corr=TRUE)
+summary(pca.univ)
 ```
+
+So the first component provides 99% of the variance.
+
 ## Number of Factors to Retain
 
 ###Scree plot
-```{r fa}
-fa<-factanal(univ_num)
-
+```{r scree}
+plot(pca.univ,type="lines")
 ```
+
+To be honest this looks like one component to rule them all, but...
+
+```{r fa}
+fa<-factanal(univ_num,factors=3,rotation="none")
+fa
+```
+
+OK so the first component isn't everything - just 39% of the variance.
 
 ## Rotate
 ```{r farotate}
-fact1<- factanal(x,factors,scores=c(“regression”),rotation=”varimax”)
+fa_rotate<- factanal(univ_num,factors=3,scores="regression",rotation="varimax")
+fa_rotate
+```
+
+Actually the 25%, 21%, and 10% of the variance are explained for the first three factors respectively.
+
+## Compare
+```{r comprot}
+fa_load<-as.data.frame(unclass(loadings(fa)))
+fa_rotate_load<-as.data.frame(unclass(loadings(fa_rotate)))
+names(fa_rotate_load)<-paste("rot",names(fa_rotate_load),sep="_")
+knitr::kable(cbind(fa_load,fa_rotate_load))
+```
+
+## Interpret
+```{r interpret}
+bolden<-function(x){if(abs(x[1])>=.40){return(paste("**",x,"**",sep=""))}else{return(as.character(x))}}
+bolden_fact<-sapply(fa_rotate_load,bolden)
+fa_rotate_load$factor1<-sapply(fa_rotate_load$rot_Factor1,bolden)
+fa_rotate_load$factor2<-sapply(fa_rotate_load$rot_Factor2,bolden)
+fa_rotate_load$factor3<-sapply(fa_rotate_load$rot_Factor3,bolden)
+bolden_fact<-fa_rotate_load[,c("factor1","factor2","factor3")]
+knitr::kable(bolden_fact)
+```
+CW-derived ranks appear to be more in line with the first two factors
+
+## US Schools
+Let's look at the subset of 70 US schools to help interpret these factors
+
+```{r usschools, fig.width=15, fig.height=15}
+scores<-as.data.frame(fa_rotate$scores)
+scores$country<-univ_na$ti_country
+scores$university<-univ_na$ti_university_name
+scores %>% filter(country=='United States of America') -> usschools
+ggplot(usschools,aes(Factor1,Factor2))+geom_point()+geom_text(aes(label=university),hjust=0, vjust=0)
+```
+
+* Factor 1 seems to be related to humanities/engineering focus
+* Factor 2 is in line with general prestige or competitiveness with a favor toward larger graduate programs
+* Factor 3 is a measure of the international or provincial nature of these schools
