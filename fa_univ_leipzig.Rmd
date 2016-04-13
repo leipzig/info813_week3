@@ -21,6 +21,7 @@ I am using data about world university rankings provided by Kaggle:
 [https://www.kaggle.com/mylesoneill/world-university-rankings](https://www.kaggle.com/mylesoneill/world-university-rankings)
 
 I used two tables in this dataset
+
 * Times Higher Education World University Ranking 
 * Center for World University Rankings
 
@@ -95,11 +96,11 @@ heatmap.2(as.matrix(scale(univ_num)),margins = c(10, 10),trace="none",cexRow=0.6
 ## PCA
 Let's first run a PCA to get a rough idea of the dimensionality of the data. A PCA should help to identify factors prior to factor analysis.
 ```{r pca}
-pca.univ<-princomp(univ_num, corr=TRUE)
+pca.univ<-princomp(scale(univ_num), corr=TRUE)
 summary(pca.univ)
 ```
 
-So the first component provides 99% of the variance.
+So the first component provides 42% of the variance, then 11%, then 8%.
 
 ## Number of Factors to Retain
 
@@ -108,7 +109,7 @@ So the first component provides 99% of the variance.
 plot(pca.univ,type="lines")
 ```
 
-To be honest this looks like one component to rule them all, but...
+To be honest this looks like one component to rule them all, but I took the first 3.
 
 ```{r fa}
 fa<-factanal(univ_num,factors=3,rotation="none")
